@@ -180,12 +180,12 @@ export default function App() {
 
         <Box
           sx={{
-            display: 'flex',
-            alignItems: 'center',
+            display: "flex",
+            alignItems: "center",
             gap: 2,
-            marginBottom: '20px',
-            flexWrap: 'wrap',
-            justifyContent: 'center',
+            marginBottom: "20px",
+            flexWrap: "wrap",
+            justifyContent: "center",
           }}
         >
           <FormControl size="small" sx={{ minWidth: 150 }}>
@@ -205,13 +205,13 @@ export default function App() {
 
         <Typography
           variant="body2"
-          sx={{ marginBottom: '10px', color: '#666' }}
+          sx={{ marginBottom: "10px", color: "#666" }}
         >
-          Selected: {SUPPORTED_CHAINS.find((c) => c.id === selectedChain)?.name}{' '}
+          Selected: {SUPPORTED_CHAINS.find((c) => c.id === selectedChain)?.name}{" "}
           (ID: {selectedChain})
         </Typography>
-        <Typography variant="body2" sx={{ color: '#666' }}>
-          <strong>Wallet:</strong> {isConnected ? 'Connected' : 'Disconnected'}
+        <Typography variant="body2" sx={{ color: "#666" }}>
+          <strong>Wallet:</strong> {isConnected ? "Connected" : "Disconnected"}
           {address && (
             <>
               <br />
