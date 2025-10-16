@@ -8,9 +8,7 @@ export async function fetchMyContacts(selectedChainId?: number) {
     return { contacts: null, error: "Please install MetaMask" };
   }
   await checkCurrentChain(selectedChainId);
-  const web3telegram = new IExecWeb3telegram(window.ethereum, {
-    allowExperimentalNetworks: true,
-  });
+  const web3telegram = new IExecWeb3telegram(window.ethereum);
   const contacts = await web3telegram.fetchMyContacts();
   return { contacts, error: "" };
 }
