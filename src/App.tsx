@@ -1,22 +1,30 @@
-import { type Contact } from '@iexec/web3telegram';
 import {
   Alert,
   Box,
   Button,
   CircularProgress,
+  FormControl,
+  MenuItem,
+  Select,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
-} from '@mui/material';
-import { Fragment, useState } from 'react';
-import './styles.css';
-import { fetchMyContacts, sendMessage } from './web3telegram/web3telegram';
+  Typography,
+} from "@mui/material";
+import { Fragment, useEffect, useState } from "react";
+import { type Contact } from "@iexec/web3telegram";
+import { fetchMyContacts, sendMessage } from "./web3telegram/web3telegram";
+import { SUPPORTED_CHAINS } from "./web3telegram/utils";
+import { useWalletConnection } from "./hooks/useWalletConnection";
+import "./styles.css";
 
 export default function App() {
+  const { isConnected, address } = useWalletConnection();
+  const [selectedChain, setSelectedChain] = useState(SUPPORTED_CHAINS[1].id);
   const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState("");
   const [displayTable, setdisplayTable] = useState(false);
   const [messageSentSuccess, setMessageSentSuccess] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -25,12 +33,56 @@ export default function App() {
   const contactsPerPage = 5; // Number of contacts to display per page
   const pageLimit = 1;
 
+  // Force chain switch on component mount if wallet is connected
+  useEffect(() => {
+    const initializeChain = async () => {
+      if (isConnected && window.ethereum) {
+        try {
+          const chain = SUPPORTED_CHAINS.find((c) => c.id === selectedChain);
+          if (!chain) return;
+
+          const chainIdHex = `0x${selectedChain.toString(16)}`;
+
+          try {
+            await window.ethereum.request({
+              method: "wallet_switchEthereumChain",
+              params: [{ chainId: chainIdHex }],
+            });
+          } catch (switchError: unknown) {
+            if ((switchError as { code?: number }).code === 4902) {
+              await window.ethereum.request({
+                method: "wallet_addEthereumChain",
+                params: [
+                  {
+                    chainId: chainIdHex,
+                    chainName: chain.name,
+                    nativeCurrency: {
+                      name: chain.tokenSymbol,
+                      symbol: chain.tokenSymbol,
+                      decimals: 18,
+                    },
+                    rpcUrls: chain.rpcUrls,
+                    blockExplorerUrls: [chain.blockExplorerUrl],
+                  },
+                ],
+              });
+            }
+          }
+        } catch (error) {
+          console.error("Failed to initialize chain:", error);
+        }
+      }
+    };
+
+    initializeChain();
+  }, [isConnected]);
+
   // Calculate the indexes of the contacts to display on the current page
   const indexOfLastContact = currentPage * contactsPerPage;
   const indexOfFirstContact = indexOfLastContact - contactsPerPage;
   const currentContacts = contacts.slice(
     indexOfFirstContact,
-    indexOfLastContact
+    indexOfLastContact,
   );
 
   // Calculate the total number of pages
@@ -64,10 +116,59 @@ export default function App() {
     return pageNumbers;
   };
 
+  const handleChainChange = async (event: any) => {
+    const newChainId = Number(event.target.value);
+    setSelectedChain(newChainId);
+
+    // Reset state when switching chains
+    setContacts([]);
+    setdisplayTable(false);
+    setErrorMessage("");
+    setMessageSentSuccess(false);
+
+    // Switch MetaMask to the selected chain
+    try {
+      const chain = SUPPORTED_CHAINS.find((c) => c.id === newChainId);
+      if (!chain) return;
+
+      const chainIdHex = `0x${newChainId.toString(16)}`;
+
+      try {
+        console.log('first')
+        await window.ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: chainIdHex }],
+        });
+      } catch (switchError: unknown) {
+        if ((switchError as { code?: number }).code === 4902) {
+          await window.ethereum.request({
+            method: "wallet_addEthereumChain",
+            params: [
+              {
+                chainId: chainIdHex,
+                chainName: chain.name,
+                nativeCurrency: {
+                  name: chain.tokenSymbol,
+                  symbol: chain.tokenSymbol,
+                  decimals: 18,
+                },
+                rpcUrls: chain.rpcUrls,
+                blockExplorerUrls: [chain.blockExplorerUrl],
+              },
+            ],
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Failed to switch chain:", error);
+    }
+  };
+
   const handleLoadAddresses = async () => {
     try {
       setLoading(true);
-      const { contacts: myContacts, error } = await fetchMyContacts();
+      const { contacts: myContacts, error } =
+        await fetchMyContacts(selectedChain);
       setLoading(false);
       if (error) {
         setErrorMessage(error);
@@ -76,8 +177,11 @@ export default function App() {
       setContacts(myContacts as Contact[]);
       setdisplayTable(true);
     } catch (err) {
-      console.log('[fetchMyContacts] ERROR', err);
+      console.log("[fetchMyContacts] ERROR", err);
       setLoading(false);
+      setErrorMessage(
+        "Failed to load contacts. Please check your wallet connection and chain selection.",
+      );
     }
   };
 
@@ -85,22 +189,86 @@ export default function App() {
     try {
       setLoading(true);
       await sendMessage(
-        'Sandbox message content',
+        "Sandbox message content",
         protectedData,
-        'iExec-sandbox'
+        "iExec-sandbox",
+        selectedChain,
       );
       setLoading(false);
       setMessageSentSuccess(true);
     } catch (err) {
-      console.log('[sendMessage] ERROR', err);
+      console.log("[sendMessage] ERROR", err);
       setLoading(false);
+      setErrorMessage(
+        "Failed to send message. Please check your wallet connection and chain selection.",
+      );
     }
   };
 
   return (
     <Box className="my-box">
+      {/* Chain Selection */}
+      <Box
+        sx={{
+          marginBottom: "30px",
+          padding: "20px",
+          border: "1px solid #ddd",
+          borderRadius: "8px",
+        }}
+      >
+        <Typography
+          variant="h6"
+          sx={{ marginBottom: "20px", textAlign: "center" }}
+        >
+          Chain Selection
+        </Typography>
+
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            marginBottom: "20px",
+            flexWrap: "wrap",
+            justifyContent: "center",
+          }}
+        >
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <Select
+              value={selectedChain}
+              onChange={handleChainChange}
+              displayEmpty
+            >
+              {SUPPORTED_CHAINS.map((chain) => (
+                <MenuItem key={chain.id} value={chain.id}>
+                  {chain.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
+
+        <Typography
+          variant="body2"
+          sx={{ marginBottom: "10px", color: "#666" }}
+        >
+          Selected: {SUPPORTED_CHAINS.find((c) => c.id === selectedChain)?.name}{" "}
+          (ID: {selectedChain})
+        </Typography>
+        <Typography variant="body2" sx={{ color: "#666" }}>
+          <strong>Wallet:</strong> {isConnected ? "Connected" : "Disconnected"}
+          {address && (
+            <>
+              <br />
+              <strong>Address:</strong> {address.slice(0, 6)}...
+              {address.slice(-4)}
+            </>
+          )}
+        </Typography>
+      </Box>
+
       <Button
-        sx={{ display: 'block', margin: '30px auto' }}
+        sx={{ display: "block", margin: "30px auto" }}
         onClick={handleLoadAddresses}
         variant="contained"
       >
@@ -108,14 +276,14 @@ export default function App() {
       </Button>
 
       {errorMessage && (
-        <Alert severity="error" style={{ maxWidth: 300, margin: 'auto' }}>
+        <Alert severity="error" style={{ maxWidth: 300, margin: "auto" }}>
           {errorMessage}
         </Alert>
       )}
 
       {loading && (
         <CircularProgress
-          sx={{ display: 'block', margin: '20px auto' }}
+          sx={{ display: "block", margin: "20px auto" }}
         ></CircularProgress>
       )}
 
@@ -124,17 +292,17 @@ export default function App() {
           <Table
             sx={{
               maxWidth: 200,
-              marginLeft: 'auto',
-              marginRight: 'auto',
+              marginLeft: "auto",
+              marginRight: "auto",
             }}
             aria-label="simple table"
           >
-            <TableHead sx={{ border: 0, borderBottom: 'none' }}>
-              <TableRow sx={{ border: 0, borderBottom: 'none' }}>
+            <TableHead sx={{ border: 0, borderBottom: "none" }}>
+              <TableRow sx={{ border: 0, borderBottom: "none" }}>
                 <TableCell
                   sx={{
                     border: 0,
-                    borderBottom: 'none',
+                    borderBottom: "none",
                     fontWeight: 600,
                     minWidth: 335,
                   }}
@@ -144,7 +312,7 @@ export default function App() {
                 <TableCell
                   sx={{
                     border: 0,
-                    borderBottom: 'none',
+                    borderBottom: "none",
                     fontWeight: 600,
                   }}
                 >
@@ -154,7 +322,7 @@ export default function App() {
             </TableHead>
             <TableBody>
               {currentContacts.map((contact, index) => (
-                <TableRow key={index} sx={{ border: 0, borderBottom: 'none' }}>
+                <TableRow key={index} sx={{ border: 0, borderBottom: "none" }}>
                   <TableCell component="th" scope="row">
                     {contact.address}
                   </TableCell>
@@ -177,27 +345,27 @@ export default function App() {
           <Box
             sx={{
               maxWidth: 425,
-              marginLeft: 'auto',
-              marginRight: 'auto',
+              marginLeft: "auto",
+              marginRight: "auto",
             }}
           >
             {contacts.length > contactsPerPage && (
               <ul className="pagination">
                 {/* Previous button */}
                 <Button
-                  sx={{ color: 'black' }}
+                  sx={{ color: "black" }}
                   className="page-link"
                   onClick={() => paginate(currentPage - 1)}
                   disabled={currentPage === 1}
                 >
-                  {'<'}
+                  {"<"}
                 </Button>
 
                 {/* Page numbers */}
                 {getPageNumbers().map((pageNumber, index) => (
                   <Fragment key={index}>
                     <Button
-                      sx={{ color: 'black' }}
+                      sx={{ color: "black" }}
                       className="page-link"
                       onClick={() => paginate(pageNumber)}
                     >
@@ -208,12 +376,12 @@ export default function App() {
 
                 {/* Next button */}
                 <Button
-                  sx={{ color: 'black' }}
+                  sx={{ color: "black" }}
                   className="page-link"
                   onClick={() => paginate(currentPage + 1)}
                   disabled={currentPage === totalPages}
                 >
-                  {'>'}
+                  {">"}
                 </Button>
               </ul>
             )}
@@ -224,7 +392,7 @@ export default function App() {
       {messageSentSuccess && (
         <Alert
           severity="success"
-          style={{ maxWidth: 300, margin: '30px auto' }}
+          style={{ maxWidth: 300, margin: "30px auto" }}
         >
           The message is being sent.
         </Alert>
