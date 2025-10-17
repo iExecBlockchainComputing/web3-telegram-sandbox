@@ -13,7 +13,7 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { type Contact } from "@iexec/web3telegram";
 import { fetchMyContacts, sendMessage } from "./web3telegram/web3telegram";
 import { SUPPORTED_CHAINS } from "./web3telegram/utils";
@@ -22,7 +22,7 @@ import "./styles.css";
 
 export default function App() {
   const { isConnected, address } = useWalletConnection();
-  const [selectedChain, setSelectedChain] = useState(SUPPORTED_CHAINS[2].id);
+  const [selectedChain, setSelectedChain] = useState(SUPPORTED_CHAINS[1].id);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [displayTable, setdisplayTable] = useState(false);
@@ -32,6 +32,50 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const contactsPerPage = 5; // Number of contacts to display per page
   const pageLimit = 1;
+
+  // Force chain switch on component mount if wallet is connected
+  useEffect(() => {
+    const initializeChain = async () => {
+      if (isConnected && window.ethereum) {
+        try {
+          const chain = SUPPORTED_CHAINS.find((c) => c.id === selectedChain);
+          if (!chain) return;
+
+          const chainIdHex = `0x${selectedChain.toString(16)}`;
+
+          try {
+            await window.ethereum.request({
+              method: "wallet_switchEthereumChain",
+              params: [{ chainId: chainIdHex }],
+            });
+          } catch (switchError: unknown) {
+            if ((switchError as { code?: number }).code === 4902) {
+              await window.ethereum.request({
+                method: "wallet_addEthereumChain",
+                params: [
+                  {
+                    chainId: chainIdHex,
+                    chainName: chain.name,
+                    nativeCurrency: {
+                      name: chain.tokenSymbol,
+                      symbol: chain.tokenSymbol,
+                      decimals: 18,
+                    },
+                    rpcUrls: chain.rpcUrls,
+                    blockExplorerUrls: [chain.blockExplorerUrl],
+                  },
+                ],
+              });
+            }
+          }
+        } catch (error) {
+          console.error("Failed to initialize chain:", error);
+        }
+      }
+    };
+
+    initializeChain();
+  }, [isConnected]);
 
   // Calculate the indexes of the contacts to display on the current page
   const indexOfLastContact = currentPage * contactsPerPage;
@@ -90,6 +134,7 @@ export default function App() {
       const chainIdHex = `0x${newChainId.toString(16)}`;
 
       try {
+        console.log('first')
         await window.ethereum.request({
           method: "wallet_switchEthereumChain",
           params: [{ chainId: chainIdHex }],
